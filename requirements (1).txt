@@ -1,0 +1,6 @@
+streamlit
+requests
+beautifulsoup4
+fpdf2
+arabic-reshaper
+python-bidi
