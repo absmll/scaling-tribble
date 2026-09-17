@@ -4,10 +4,17 @@ import re
 from datetime import datetime
 from urllib.parse import urlparse
 
-import arabic_reshaper
+try:
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+except ImportError:  # pragma: no cover - fallback for environments without Arabic packages
+    arabic_reshaper = None
+
+    def get_display(text):
+        return text
+
 import requests
 import streamlit as st
-from bidi.algorithm import get_display
 from bs4 import BeautifulSoup
 from fpdf import FPDF
 
@@ -21,8 +28,10 @@ def ar(text):
     if text is None:
         return ""
     text = str(text)
-    reshaped = arabic_reshaper.reshape(text)
-    return get_display(reshaped)
+    if arabic_reshaper is not None:
+        reshaped = arabic_reshaper.reshape(text)
+        return get_display(reshaped)
+    return text
 
 
 class ReportPDF(FPDF):
@@ -72,7 +81,6 @@ def pdf_line(pdf, label, ok=None, value=None):
     text = f"{prefix}{label}" + (f": {value}" if value not in (None, "") else "")
     pdf.multi_cell(0, 8, ar(text), align="R")
     pdf.set_text_color(20, 20, 20)
-
 
 
 HEADERS = {
@@ -323,7 +331,10 @@ SALLA_API_BASE = "https://api.salla.dev/admin/v2"
 
 
 def salla_headers():
-    return {"Authorization": f"Bearer {st.session_state['salla_token']}"}
+    token = st.session_state.get("salla_token")
+    if not token:
+        raise RuntimeError("لم يتم ربط متجر سلة بعد.")
+    return {"Authorization": f"Bearer {token}"}
 
 
 def salla_exchange_code(client_id, client_secret, redirect_uri, code):
@@ -347,7 +358,7 @@ def salla_get_products(page=1):
 
 def salla_update_product(product_id, payload):
     resp = requests.put(f"{SALLA_API_BASE}/products/{product_id}", headers=salla_headers(),
-                         json=payload, timeout=20)
+                        json=payload, timeout=20)
     resp.raise_for_status()
     return resp.json()
 
@@ -410,7 +421,6 @@ def render_salla_tab():
     if "salla_token" not in st.session_state:
         st.session_state["salla_token"] = None
 
-    # التقط كود التفويض من الرابط لو المتجر رجّعه بعد الموافقة
     query_code = st.query_params.get("code")
 
     with st.expander("⚙️ إعدادات التطبيق (مرة واحدة بس)", expanded=not st.session_state["salla_token"]):
